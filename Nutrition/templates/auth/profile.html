@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="page-header mb-4">
+    <h2><i class="bi bi-person-fill text-primary me-2"></i>My Profile</h2>
+    <p class="text-muted">Keep your profile updated for personalized AI recommendations</p>
+  </div>
+  <form method="POST" action="{{ url_for('auth.profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}"/>
+    <div class="row g-4">
+      <!-- Personal Info -->
+      <div class="col-lg-4">
+        <div class="card card-modern">
+          <div class="card-body text-center p-4">
+            <div class="avatar-large mx-auto mb-3" style="background:{{ current_user.avatar_color }}">
+              {{ (current_user.full_name or current_user.username)[0].upper() }}
+            </div>
+            <h5 class="fw-bold mb-0">{{ current_user.full_name or current_user.username }}</h5>
+            <p class="text-muted small">{{ current_user.email }}</p>
+            {% if profile and profile.weight_kg and profile.height_cm %}
+            <div class="bmi-badge mt-2">
+              BMI: {{ "%.1f"|format((profile.weight_kg / ((profile.height_cm/100)**2))) }}
+            </div>
+            {% endif %}
+            <div class="mt-3">
+              <div class="form-check form-switch d-flex justify-content-center align-items-center gap-2">
+                <input class="form-check-input" type="checkbox" name="dark_mode" id="darkModeProfile"
+                       {{ 'checked' if current_user.dark_mode }}>
+                <label class="form-check-label" for="darkModeProfile">Dark Mode</label>
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="form-label">Interface Language</label>
+              <select name="language" class="form-select form-select-sm">
+                {% for code, name in [('en','English'),('hi','हिंदी'),('ta','தமிழ்'),('te','తెలుగు'),('bn','বাংলা'),('mr','मराठी'),('gu','ગુજરાતી')] %}
+                <option value="{{ code }}" {{ 'selected' if current_user.language == code }}>{{ name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Profile Details -->
+      <div class="col-lg-8">
+        <div class="card card-modern">
+          <div class="card-body p-4">
+            <h5 class="card-title mb-4"><i class="bi bi-sliders2 me-2 text-primary"></i>Health Profile</h5>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Full Name</label>
+                <input type="text" name="full_name" class="form-control" value="{{ current_user.full_name or '' }}" />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Age</label>
+                <input type="number" name="age" class="form-control" value="{{ profile.age or '' }}" min="1" max="120" />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Gender</label>
+                <select name="gender" class="form-select">
+                  <option value="">Select</option>
+                  {% for g in ['Male','Female','Non-binary','Prefer not to say'] %}
+                  <option {{ 'selected' if profile and profile.gender == g }}>{{ g }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Weight (kg)</label>
+                <input type="number" step="0.1" name="weight_kg" class="form-control"
+                       value="{{ profile.weight_kg or '' }}" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Height (cm)</label>
+                <input type="number" step="0.1" name="height_cm" class="form-control"
+                       value="{{ profile.height_cm or '' }}" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Activity Level</label>
+                <select name="activity_level" class="form-select">
+                  {% for val, label in [('sedentary','Sedentary (desk job)'),('light','Lightly Active (1-3 days/week)'),('moderate','Moderately Active (3-5 days/week)'),('active','Very Active (6-7 days/week)'),('very_active','Extra Active (athlete)')] %}
+                  <option value="{{ val }}" {{ 'selected' if profile and profile.activity_level == val }}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Fitness Goal</label>
+                <select name="fitness_goal" class="form-select">
+                  {% for val, label in [('weight_loss','Weight Loss'),('muscle_gain','Muscle Gain'),('maintenance','Maintenance'),('diabetes_management','Diabetes Management'),('heart_health','Heart Health')] %}
+                  <option value="{{ val }}" {{ 'selected' if profile and profile.fitness_goal == val }}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Dietary Preference</label>
+                <select name="dietary_preference" class="form-select">
+                  {% for val, label in [('omnivore','Omnivore'),('vegetarian','Vegetarian'),('vegan','Vegan'),('eggetarian','Eggetarian'),('jain','Jain'),('gluten_free','Gluten-Free'),('keto','Keto')] %}
+                  <option value="{{ val }}" {{ 'selected' if profile and profile.dietary_preference == val }}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Cuisine Preference</label>
+                <input type="text" name="cuisine_preference" class="form-control"
+                       value="{{ profile.cuisine_preference or 'Indian' }}" placeholder="e.g. North Indian, South Indian" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Target Weight (kg)</label>
+                <input type="number" step="0.1" name="target_weight_kg" class="form-control"
+                       value="{{ profile.target_weight_kg or '' }}" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Meals per Day</label>
+                <input type="number" name="meals_per_day" class="form-control" min="2" max="6"
+                       value="{{ profile.meals_per_day or 3 }}" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Sleep Hours/Night</label>
+                <input type="number" step="0.5" name="sleep_hours" class="form-control" min="4" max="12"
+                       value="{{ profile.sleep_hours or 7.5 }}" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Stress Level</label>
+                <select name="stress_level" class="form-select">
+                  {% for s in ['low','moderate','high','very_high'] %}
+                  <option {{ 'selected' if profile and profile.stress_level == s }}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Allergies / Food Intolerances</label>
+                <input type="text" name="allergies" class="form-control"
+                       value="{{ profile.allergies or 'none' }}" placeholder="e.g. nuts, dairy, gluten, soy" />
+              </div>
+              <div class="col-12">
+                <label class="form-label">Medical Conditions</label>
+                <input type="text" name="medical_conditions" class="form-control"
+                       value="{{ profile.medical_conditions or 'none' }}"
+                       placeholder="e.g. diabetes, hypertension, PCOS, thyroid" />
+              </div>
+            </div>
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-primary px-4">
+                <i class="bi bi-check-circle-fill me-2"></i>Save Profile
+              </button>
+              <a href="{{ url_for('nutrition.dashboard') }}" class="btn btn-outline-secondary px-4">Cancel</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

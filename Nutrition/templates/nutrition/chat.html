@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}AI Nutrition Chat{% endblock %}
+{% block content %}
+<div class="chat-page d-flex flex-column" style="height:calc(100vh - 60px)">
+  <!-- Chat Header -->
+  <div class="chat-header px-4 py-3 border-bottom d-flex align-items-center gap-3">
+    <div class="avatar-circle bg-success text-white d-flex align-items-center justify-content-center"
+         style="width:40px;height:40px;border-radius:50%;font-size:20px">
+      <i class="bi bi-robot"></i>
+    </div>
+    <div>
+      <h6 class="mb-0 fw-bold">NutriAgent AI</h6>
+      <small id="aiStatusBadge" class="text-muted">
+        <i class="bi bi-circle-fill" style="font-size:8px"></i>
+        Checking AI connection…
+      </small>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <!-- Family member context selector -->
+      {% if current_user.family_members %}
+      <select id="memberSelector" class="form-select form-select-sm" style="width:auto">
+        <option value="">Myself</option>
+        {% for m in current_user.family_members %}
+        <option value="{{ m.id }}">{{ m.name }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      <!-- Task type -->
+      <select id="taskTypeSelector" class="form-select form-select-sm" style="width:auto">
+        <option value="chat">General Chat</option>
+        <option value="meal_plan">Meal Plan</option>
+        <option value="calorie_analysis">Calorie Analysis</option>
+        <option value="grocery_list">Grocery List</option>
+        <option value="recipe">Recipe</option>
+        <option value="hydration_goal">Hydration Goal</option>
+      </select>
+      <button class="btn btn-sm btn-outline-danger" onclick="clearChat()">
+        <i class="bi bi-trash3-fill"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Chat messages area -->
+  <div class="chat-messages flex-1 overflow-auto px-3 px-md-4 py-3" id="chatMessages">
+    <!-- Welcome message -->
+    <div class="chat-msg ai animate-fadein" id="welcomeMsg">
+      <div class="msg-avatar"><i class="bi bi-robot"></i></div>
+      <div class="msg-bubble ai">
+        <p class="mb-2">Namaste! 🙏 I'm <strong>NutriAgent</strong>, your AI-powered nutrition companion powered by IBM Watsonx Granite.</p>
+        <p class="mb-2">I can help you with:</p>
+        <div class="quick-prompt-chips">
+          <button class="chip" onclick="sendQuickPrompt('Create a 7-day Indian vegetarian meal plan for weight loss')">
+            🥗 7-day meal plan
+          </button>
+          <button class="chip" onclick="sendQuickPrompt('What should I eat for breakfast as a diabetic?')">
+            🍳 Diabetic breakfast ideas
+          </button>
+          <button class="chip" onclick="sendQuickPrompt('Calculate my daily calorie needs based on my profile')">
+            🔥 Calculate calories
+          </button>
+          <button class="chip" onclick="sendQuickPrompt('Suggest a high-protein Indian dinner recipe')">
+            👨‍🍳 Recipe suggestion
+          </button>
+          <button class="chip" onclick="sendQuickPrompt('Give me a healthy grocery list for this week')">
+            🛒 Weekly grocery list
+          </button>
+          <button class="chip" onclick="sendQuickPrompt('How much water should I drink daily?')">
+            💧 Hydration goal
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loaded chat history -->
+    {% for msg in chat_history %}
+    <div class="chat-msg {{ msg.role }} animate-fadein">
+      <div class="msg-avatar">
+        {% if msg.role == 'user' %}
+          <div class="avatar-circle" style="background:{{ current_user.avatar_color }};width:32px;height:32px;font-size:13px">
+            {{ (current_user.full_name or current_user.username)[0].upper() }}
+          </div>
+        {% else %}
+          <i class="bi bi-robot"></i>
+        {% endif %}
+      </div>
+      <div class="msg-bubble {{ msg.role }}">
+        <div class="msg-content">{{ msg.content|replace('\n','<br>')|safe }}</div>
+        <span class="msg-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at else '' }}</span>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Typing indicator -->
+    <div class="chat-msg ai d-none" id="typingIndicator">
+      <div class="msg-avatar"><i class="bi bi-robot"></i></div>
+      <div class="msg-bubble ai typing-bubble">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Input -->
+  <div class="chat-input-area border-top px-3 px-md-4 py-3">
+    <div class="d-flex gap-2 align-items-end">
+      <div class="chat-input-wrapper flex-1">
+        <textarea id="chatInput" class="form-control chat-textarea"
+                  placeholder="Ask about meal plans, recipes, calories, nutrition advice..."
+                  rows="1" maxlength="1000"></textarea>
+        <div class="chat-input-actions">
+          <button class="btn-icon-mini" onclick="analyzeFood()" title="Analyze food">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-send" id="sendBtn" onclick="sendMessage()">
+        <i class="bi bi-send-fill"></i>
+      </button>
+    </div>
+    <div class="d-flex gap-2 mt-2 flex-wrap">
+      <small class="text-muted">Try: </small>
+      <button class="chip-sm" onclick="setInput('Analyze: Dal Makhani + 2 rotis + salad')">Analyze meal</button>
+      <button class="chip-sm" onclick="setInput('High protein breakfast under 400 calories')">Protein breakfast</button>
+      <button class="chip-sm" onclick="setInput('Weekly meal plan for my family of 4')">Family meal plan</button>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+const chatMessages    = document.getElementById('chatMessages');
+const chatInput       = document.getElementById('chatInput');
+const sendBtn         = document.getElementById('sendBtn');
+const typingIndicator = document.getElementById('typingIndicator');
+const aiStatusBadge   = document.getElementById('aiStatusBadge');
+
+// ── Check AI connection status on page load ──────────────────────────────────
+async function checkAIStatus() {
+  try {
+    const res  = await fetch('/api/test-connection');
+    const data = await res.json();
+    updateStatusBadge(data.status);
+    // If not OK, show a dismissible banner above the chat
+    if (!data.ok) {
+      showAIWarningBanner(data.status, data.hint);
+    }
+  } catch (e) {
+    updateStatusBadge('error');
+  }
+}
+
+function updateStatusBadge(status) {
+  const configs = {
+    ok:                  { color: '#22c55e', dot: '●', text: 'IBM Watsonx Connected' },
+    pending:             { color: '#f59e0b', dot: '●', text: 'Connecting to IBM Watsonx...' },
+    project_not_found:   { color: '#ef4444', dot: '●', text: 'Project not found — see banner' },
+    wml_inactive:        { color: '#ef4444', dot: '●', text: 'WML instance inactive — see banner' },
+    model_not_supported: { color: '#f59e0b', dot: '●', text: 'Model not available — see banner' },
+    auth_error:          { color: '#ef4444', dot: '●', text: 'API Key invalid — see banner' },
+    no_credentials:      { color: '#f59e0b', dot: '●', text: 'Credentials not set — see banner' },
+    error:               { color: '#f59e0b', dot: '●', text: 'AI unavailable — see banner' },
+  };
+  const cfg = configs[status] || configs.error;
+  aiStatusBadge.innerHTML =
+    `<span style="color:${cfg.color};font-size:8px">${cfg.dot}</span> ${cfg.text}`;
+}
+
+function showAIWarningBanner(status, hint) {
+  document.getElementById('aiBanner')?.remove();
+
+  const titles = {
+    project_not_found:   '⚠️ Watsonx Project Not Found',
+    wml_inactive:        '⚠️ Watson Machine Learning Instance Inactive',
+    model_not_supported: '⚠️ Model Not Available',
+    auth_error:          '⚠️ IBM API Key Invalid',
+    no_credentials:      '⚠️ IBM Credentials Missing',
+    error:               '⚠️ AI Engine Unavailable',
+  };
+
+  const actions = {
+    project_not_found: `
+      <ol class="mb-0 ps-3 small">
+        <li>In your terminal run: <code>python check_project.py</code> — shows all valid Project IDs</li>
+        <li>Copy the correct ID</li>
+        <li>Open <code>.env</code> and set <code>IBM_PROJECT_ID=&lt;paste id here&gt;</code></li>
+        <li>Restart: <code>python app.py</code></li>
+      </ol>`,
+    wml_inactive: `
+      <ol class="mb-0 ps-3 small">
+        <li>Open <a href="https://cloud.ibm.com/resources" target="_blank" class="text-warning">cloud.ibm.com/resources</a></li>
+        <li>Find your <strong>Watson Machine Learning</strong> instance in the list</li>
+        <li>Click it — if status shows <strong>Inactive</strong>, click <strong>Resume</strong> or upgrade your plan</li>
+        <li>Wait ~2 minutes, then send a message again — no restart needed</li>
+      </ol>
+      <div class="mt-2 small" style="color:#fde68a">Your credentials and Project ID are correct ✅ — only the WML service needs to be reactivated.</div>`,
+    model_not_supported: `
+      <ol class="mb-0 ps-3 small">
+        <li>Open your <code>.env</code> file</li>
+        <li>Change <code>GRANITE_MODEL_ID=ibm/granite-3-1-8b-base</code></li>
+        <li>Restart: <code>python app.py</code></li>
+      </ol>`,
+    auth_error: `
+      <ol class="mb-0 ps-3 small">
+        <li>Open <a href="https://cloud.ibm.com/iam/apikeys" target="_blank" class="text-warning">cloud.ibm.com/iam/apikeys</a></li>
+        <li>Create a new API key</li>
+        <li>Set <code>IBM_API_KEY=&lt;new key&gt;</code> in your <code>.env</code> file</li>
+        <li>Restart: <code>python app.py</code></li>
+      </ol>`,
+    no_credentials: `
+      <div class="small">In your terminal: <code>copy .env.example .env</code> — then fill in <code>IBM_API_KEY</code> and <code>IBM_PROJECT_ID</code> and restart.</div>`,
+    error: `<div class="small">${hint || 'Check the app log (nutriagent.log) for details.'}</div>`,
+  };
+
+  const banner = document.createElement('div');
+  banner.id = 'aiBanner';
+  banner.style.cssText = 'background:#1a0f00;border-bottom:2px solid #f59e0b;padding:12px 20px;position:relative;';
+  banner.innerHTML = `
+    <div style="max-width:900px;margin:0 auto">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1">
+          <div style="color:#fbbf24;font-weight:700;font-size:14px;margin-bottom:6px">${titles[status] || '⚠️ AI Offline'}</div>
+          <div style="color:#fde68a">${actions[status] || hint || ''}</div>
+        </div>
+        <button onclick="document.getElementById('aiBanner').remove()"
+          style="background:none;border:none;color:#fbbf24;font-size:18px;cursor:pointer;flex-shrink:0;padding:0">✕</button>
+      </div>
+    </div>`;
+  // Insert after the chat header
+  document.querySelector('.chat-header').after(banner);
+}
+
+// Auto-scroll
+function scrollToBottom() {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Run connection check immediately
+checkAIStatus();
+scrollToBottom();
+
+// Auto-resize textarea
+chatInput.addEventListener('input', () => {
+  chatInput.style.height = 'auto';
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+});
+
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+function setInput(text) { chatInput.value = text; chatInput.focus(); }
+function sendQuickPrompt(text) { chatInput.value = text; sendMessage(); }
+
+async function sendMessage() {
+  const text     = chatInput.value.trim();
+  if (!text) return;
+  const taskType = document.getElementById('taskTypeSelector').value;
+  const memberId = document.getElementById('memberSelector')?.value || null;
+
+  appendMessage(text, 'user');
+  chatInput.value = '';
+  chatInput.style.height = 'auto';
+  sendBtn.disabled = true;
+  typingIndicator.classList.remove('d-none');
+  scrollToBottom();
+
+  try {
+    const res  = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, task_type: taskType, member_id: memberId || undefined })
+    });
+    const data = await res.json();
+    typingIndicator.classList.add('d-none');
+    appendMessage(data.response || data.error || 'Sorry, I could not process that.', 'assistant');
+    // Update status badge live after each response
+    if (data.ai_status) updateStatusBadge(data.ai_status);
+    // If status degraded, refresh the banner
+    if (data.ai_status && data.ai_status !== 'ok') {
+      checkAIStatus();
+    } else if (data.ai_status === 'ok') {
+      document.getElementById('aiBanner')?.remove();
+    }
+  } catch (err) {
+    typingIndicator.classList.add('d-none');
+    appendMessage('Network error. Please check your connection and try again.', 'assistant');
+  } finally {
+    sendBtn.disabled = false;
+    scrollToBottom();
+  }
+}
+
+function appendMessage(content, role) {
+  const isAI    = role === 'assistant';
+  const time    = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+  const avatarColor = '{{ current_user.avatar_color }}';
+  const initials   = '{{ (current_user.full_name or current_user.username)[0].upper() }}';
+
+  const html = `
+    <div class="chat-msg ${role} animate-fadein">
+      <div class="msg-avatar">
+        ${isAI
+          ? '<i class="bi bi-robot"></i>'
+          : `<div class="avatar-circle" style="background:${avatarColor};width:32px;height:32px;font-size:13px">${initials}</div>`
+        }
+      </div>
+      <div class="msg-bubble ${role}">
+        <div class="msg-content">${formatMessage(content)}</div>
+        <span class="msg-time">${time}</span>
+      </div>
+    </div>`;
+  typingIndicator.insertAdjacentHTML('beforebegin', html);
+}
+
+function formatMessage(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g,      '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,          '<em>$1</em>')
+    .replace(/`([^`]+)`/g,          '<code style="background:rgba(128,128,128,0.15);padding:1px 5px;border-radius:4px;font-size:12px">$1</code>')
+    .replace(/^#{1,3} (.+)$/gm,     '<strong class="d-block mb-1 mt-2">$1</strong>')
+    .replace(/^\d+\. (.+)$/gm,      '<div style="display:flex;gap:6px;margin:2px 0"><span style="flex-shrink:0;color:var(--accent);font-weight:600">›</span><span>$1</span></div>')
+    .replace(/^[-•] (.+)$/gm,       '<div style="display:flex;gap:6px;margin:2px 0"><span style="flex-shrink:0">•</span><span>$1</span></div>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:inherit;text-decoration:underline">$1</a>')
+    .replace(/\n/g,                 '<br>');
+}
+
+async function clearChat() {
+  if (!confirm('Clear all chat history?')) return;
+  const res  = await fetch('/api/chat/clear', { method: 'POST' });
+  const data = await res.json();
+  if (data.success) {
+    chatMessages.querySelectorAll('.chat-msg').forEach((el, i) => {
+      if (el.id !== 'welcomeMsg' && el.id !== 'typingIndicator') el.remove();
+    });
+    document.getElementById('welcomeMsg').classList.remove('d-none');
+    showToast('Chat cleared', 'info');
+  }
+}
+
+function analyzeFood() {
+  const val = chatInput.value.trim();
+  if (val) { chatInput.value = `Analyze the nutrition of: ${val}`; }
+  else { chatInput.value = 'Analyze: '; chatInput.focus(); }
+}
+</script>
+{% endblock %}
+{% endblock %}

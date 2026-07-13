@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}AI Recipes{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:900px">
+  <div class="page-header mb-4">
+    <h2><i class="bi bi-book-fill text-purple me-2"></i>AI Recipe Suggestions</h2>
+    <p class="text-muted">Get personalized healthy Indian recipes powered by IBM Granite AI</p>
+  </div>
+
+  <div class="card card-modern mb-4">
+    <div class="card-body p-4">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Available Ingredients (optional)</label>
+          <input type="text" id="ingredients" class="form-control"
+                 placeholder="e.g. dal, spinach, paneer, tomato, onion" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Meal Type</label>
+          <select class="form-select" id="recipeMealType">
+            <option value="any">Any</option>
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+            <option value="snack">Snack</option>
+            <option value="dessert">Healthy Dessert</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">&nbsp;</label>
+          <button class="btn btn-primary w-100" onclick="getRecipe()">
+            <i class="bi bi-stars me-2"></i>Get Recipe
+          </button>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Additional Preferences</label>
+          <input type="text" id="recipePreferences" class="form-control"
+                 placeholder="e.g. high protein, under 30 mins, kid-friendly, low-carb" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Recipe Ideas -->
+  <div class="mb-4">
+    <p class="fw-medium mb-2">Quick Ideas:</p>
+    <div class="d-flex gap-2 flex-wrap">
+      {% for idea in ['Protein-rich breakfast bowl','Quick 15-min dal','High-fiber salad','Low-calorie snack','Post-workout meal','Kid-friendly tiffin','Diabetic-friendly lunch','Heart-healthy dinner'] %}
+      <button class="chip" onclick="setRecipePreference('{{ idea }}')">{{ idea }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Recipe Result -->
+  <div id="recipeResult" class="d-none">
+    <div class="card card-modern">
+      <div class="card-header d-flex justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-robot text-primary me-2"></i>AI Recipe</h6>
+        <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('recipeResult').classList.add('d-none')">✕</button>
+      </div>
+      <div class="card-body" id="recipeContent">
+        <div class="text-center py-3"><div class="spinner-border text-primary"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+function setRecipePreference(val) {
+  document.getElementById('recipePreferences').value = val;
+}
+
+async function getRecipe() {
+  const ingredients = document.getElementById('ingredients').value;
+  const mealType    = document.getElementById('recipeMealType').value;
+  const prefs       = document.getElementById('recipePreferences').value;
+
+  document.getElementById('recipeResult').classList.remove('d-none');
+  document.getElementById('recipeContent').innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Generating recipe...</p></div>';
+
+  const res  = await fetch('/api/recipe/suggest', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ingredients, meal_type: mealType, preferences: prefs })
+  });
+  const data = await res.json();
+  document.getElementById('recipeContent').innerHTML =
+    `<div class="meal-plan-content">${(data.recipe || 'Could not generate recipe.').replace(/\n/g,'<br>')}</div>`;
+}
+</script>
+{% endblock %}
+{% endblock %}

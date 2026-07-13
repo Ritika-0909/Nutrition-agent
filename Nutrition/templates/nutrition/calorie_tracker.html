@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Calorie Tracker{% endblock %}
+{% block content %}
+<div class="container-fluid px-3 px-lg-4 py-4">
+  <div class="page-header mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h2><i class="bi bi-bar-chart-fill text-warning me-2"></i>Calorie Tracker</h2>
+      <p class="text-muted mb-0">{{ today.strftime('%A, %B %d, %Y') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-primary btn-sm" onclick="analyzeWithAI()">
+        <i class="bi bi-robot me-1"></i>AI Analyze
+      </button>
+      <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#logFoodModal">
+        <i class="bi bi-plus-circle-fill me-1"></i>Log Food
+      </button>
+    </div>
+  </div>
+
+  <!-- Progress cards -->
+  <div class="row g-3 mb-4">
+    {% set total_cals = logs|sum(attribute='calories') %}
+    {% set total_prot = logs|sum(attribute='protein_g') %}
+    {% set total_carbs = logs|sum(attribute='carbs_g') %}
+    {% set total_fat = logs|sum(attribute='fat_g') %}
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-value text-warning">{{ total_cals|int }}</div>
+        <div class="stat-label">Calories</div>
+        <div class="stat-sub">/ {{ tdee }} goal</div>
+        <div class="progress progress-mini mt-1">
+          <div class="progress-bar bg-warning" style="width:{{ [100,(total_cals/tdee*100)|int]|min }}%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-value text-primary">{{ total_prot|round(1) }}g</div>
+        <div class="stat-label">Protein</div>
+        <div class="progress progress-mini mt-1">
+          <div class="progress-bar bg-primary" style="width:{{ [100,(total_prot*4/tdee*100)|int]|min }}%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-value text-success">{{ total_carbs|round(1) }}g</div>
+        <div class="stat-label">Carbohydrates</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-value text-danger">{{ total_fat|round(1) }}g</div>
+        <div class="stat-label">Fat</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Food Log Table -->
+  <div class="card card-modern mb-4">
+    <div class="card-header d-flex justify-content-between">
+      <h6 class="mb-0">Today's Food Log</h6>
+      <span class="badge bg-primary">{{ logs|length }} items</span>
+    </div>
+    <div class="card-body p-0">
+      {% if logs %}
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-header">
+            <tr>
+              <th>Meal</th>
+              <th>Food</th>
+              <th class="text-end">Cal</th>
+              <th class="text-end">Prot</th>
+              <th class="text-end">Carbs</th>
+              <th class="text-end">Fat</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="foodLogBody">
+            {% for log in logs %}
+            <tr id="log-{{ log.id }}">
+              <td><span class="badge meal-badge-{{ log.meal_type }}">{{ log.meal_type|title }}</span></td>
+              <td class="fw-medium">{{ log.food_name }}</td>
+              <td class="text-end">{{ log.calories|int }}</td>
+              <td class="text-end text-primary">{{ "%.1f"|format(log.protein_g or 0) }}g</td>
+              <td class="text-end text-success">{{ "%.1f"|format(log.carbs_g or 0) }}g</td>
+              <td class="text-end text-warning">{{ "%.1f"|format(log.fat_g or 0) }}g</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-icon-only text-danger" onclick="deleteLog({{ log.id }})">
+                  <i class="bi bi-trash3"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-utensils fs-1 mb-3 d-block"></i>
+        <h6>No meals logged today</h6>
+        <p class="small">Start tracking your nutrition!</p>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#logFoodModal">
+          <i class="bi bi-plus-circle-fill me-2"></i>Log Your First Meal
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- AI Food Analysis area -->
+  <div class="card card-modern" id="aiAnalysisCard" style="display:none!important">
+    <div class="card-header d-flex justify-content-between">
+      <h6 class="mb-0"><i class="bi bi-robot me-2 text-primary"></i>AI Nutrition Analysis</h6>
+      <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('aiAnalysisCard').style.display='none'">×</button>
+    </div>
+    <div class="card-body" id="aiAnalysisContent"></div>
+  </div>
+</div>
+
+<!-- Log Food Modal -->
+<div class="modal fade" id="logFoodModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content modal-modern">
+      <div class="modal-header border-0">
+        <h5 class="modal-title"><i class="bi bi-plus-circle-fill text-primary me-2"></i>Log Food</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Food Name</label>
+          <div class="input-group">
+            <input type="text" id="foodName" class="form-control" placeholder="e.g. Dal Makhani (1 bowl)" />
+            <button class="btn btn-outline-primary" onclick="autofillNutrition()">
+              <i class="bi bi-robot"></i> AI Fill
+            </button>
+          </div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label">Meal Type</label>
+            <select class="form-select" id="mealType">
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner">Dinner</option>
+              <option value="snack" selected>Snack</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Calories (kcal)</label>
+            <input type="number" class="form-control" id="logCalories" min="0" placeholder="e.g. 250" />
+          </div>
+        </div>
+        <div class="row g-2">
+          <div class="col-4">
+            <label class="form-label">Protein (g)</label>
+            <input type="number" step="0.1" class="form-control" id="logProtein" min="0" placeholder="0" />
+          </div>
+          <div class="col-4">
+            <label class="form-label">Carbs (g)</label>
+            <input type="number" step="0.1" class="form-control" id="logCarbs" min="0" placeholder="0" />
+          </div>
+          <div class="col-4">
+            <label class="form-label">Fat (g)</label>
+            <input type="number" step="0.1" class="form-control" id="logFat" min="0" placeholder="0" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" onclick="logFood()"><i class="bi bi-check-circle-fill me-2"></i>Log Food</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+async function logFood() {
+  const data = {
+    food_name: document.getElementById('foodName').value,
+    meal_type: document.getElementById('mealType').value,
+    calories:  parseFloat(document.getElementById('logCalories').value) || 0,
+    protein_g: parseFloat(document.getElementById('logProtein').value) || 0,
+    carbs_g:   parseFloat(document.getElementById('logCarbs').value) || 0,
+    fat_g:     parseFloat(document.getElementById('logFat').value) || 0,
+  };
+  if (!data.food_name) { showToast('Please enter a food name', 'warning'); return; }
+
+  const res  = await fetch('/api/nutrition/log', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  });
+  const resp = await res.json();
+  if (resp.success) {
+    bootstrap.Modal.getInstance(document.getElementById('logFoodModal'))?.hide();
+    showToast('Food logged!', 'success');
+    setTimeout(() => location.reload(), 600);
+  }
+}
+
+async function deleteLog(logId) {
+  if (!confirm('Remove this entry?')) return;
+  const res = await fetch(`/api/nutrition/log/${logId}`, { method: 'DELETE' });
+  if ((await res.json()).success) {
+    document.getElementById(`log-${logId}`)?.remove();
+    showToast('Entry removed', 'info');
+  }
+}
+
+async function autofillNutrition() {
+  const food = document.getElementById('foodName').value.trim();
+  if (!food) { showToast('Enter food name first', 'warning'); return; }
+  showToast('AI analyzing...', 'info');
+  const res  = await fetch('/api/analyze/food', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ food })
+  });
+  const data = await res.json();
+  const card = document.getElementById('aiAnalysisCard');
+  document.getElementById('aiAnalysisContent').innerHTML =
+    `<div class="meal-plan-content">${(data.analysis||'').replace(/\n/g,'<br>')}</div>`;
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth' });
+  bootstrap.Modal.getInstance(document.getElementById('logFoodModal'))?.hide();
+}
+
+function analyzeWithAI() {
+  const food = prompt('Enter food/meal to analyze (e.g. "2 rotis + dal + sabzi"):');
+  if (food) {
+    fetch('/api/analyze/food', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ food })
+    }).then(r => r.json()).then(data => {
+      const card = document.getElementById('aiAnalysisCard');
+      document.getElementById('aiAnalysisContent').innerHTML =
+        `<div class="meal-plan-content">${(data.analysis||'').replace(/\n/g,'<br>')}</div>`;
+      card.style.display = 'block';
+    });
+  }
+}
+</script>
+{% endblock %}
+{% endblock %}

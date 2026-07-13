@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Hydration Tracker{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:900px">
+  <div class="page-header mb-4">
+    <h2><i class="bi bi-droplet-fill text-info me-2"></i>Hydration Tracker</h2>
+    <p class="text-muted">Track your daily water intake and stay hydrated</p>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-md-5">
+      <!-- Water Goal Card -->
+      <div class="card card-modern mb-4">
+        <div class="card-body p-4 text-center">
+          <div class="water-circle-container mb-3">
+            <div class="water-circle" id="waterCircle">
+              <div class="water-fill" id="waterFill" style="height:{{ [100,(water_today/goal.total_ml*100)|int]|min }}%"></div>
+              <div class="water-text">
+                <div class="water-amount" id="waterAmount">{{ (water_today/1000)|round(2) }}L</div>
+                <div class="water-goal-text">/ {{ goal.total_L }}L goal</div>
+              </div>
+            </div>
+          </div>
+          <div class="progress mb-3" style="height:10px;border-radius:10px">
+            <div class="progress-bar bg-info" id="waterProgress"
+                 style="width:{{ [100,(water_today/goal.total_ml*100)|int]|min }}%"></div>
+          </div>
+          <p class="text-muted small">
+            {{ goal.glasses_8oz }} glasses · {{ goal.hourly_ml }}ml/hour recommended
+          </p>
+
+          <!-- Quick Log Buttons -->
+          <div class="d-flex gap-2 flex-wrap justify-content-center mb-3">
+            {% for ml in [150, 200, 250, 330, 500, 750] %}
+            <button class="btn btn-outline-info btn-sm water-log-btn" data-ml="{{ ml }}">
+              <i class="bi bi-droplet"></i> {{ ml }}ml
+            </button>
+            {% endfor %}
+          </div>
+          <div class="input-group mb-2">
+            <input type="number" id="customWater" class="form-control" placeholder="Custom (ml)" min="50" max="2000" />
+            <button class="btn btn-info text-white" onclick="logCustomWater()">Log</button>
+          </div>
+          <div class="text-success small mt-2" id="waterFeedback"></div>
+        </div>
+      </div>
+
+      <!-- Tips -->
+      <div class="card card-modern">
+        <div class="card-body p-3">
+          <h6 class="mb-2"><i class="bi bi-lightbulb-fill text-warning me-2"></i>Hydration Tips</h6>
+          <ul class="list-unstyled small text-muted mb-0">
+            <li class="mb-1">💧 Start your day with 2 glasses of water</li>
+            <li class="mb-1">🍋 Add lemon or mint to make it enjoyable</li>
+            <li class="mb-1">☕ Limit tea/coffee to 2-3 cups/day</li>
+            <li class="mb-1">🥗 Eat water-rich foods like cucumber, tomato</li>
+            <li>⏰ Set reminders every 1-2 hours</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weekly Chart -->
+    <div class="col-md-7">
+      <div class="card card-modern mb-4">
+        <div class="card-header">
+          <h6 class="mb-0"><i class="bi bi-bar-chart-fill text-info me-2"></i>7-Day Water Intake</h6>
+        </div>
+        <div class="card-body">
+          <canvas id="waterChart" height="200"></canvas>
+        </div>
+      </div>
+
+      <!-- Goal Info -->
+      <div class="card card-modern">
+        <div class="card-body p-3">
+          <h6 class="mb-3">Your Personalized Hydration Plan</h6>
+          <div class="row g-2 text-center">
+            <div class="col-3">
+              <div class="metric-mini">
+                <div class="metric-val text-info">{{ goal.total_L }}L</div>
+                <div class="metric-lbl">Daily Goal</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="metric-mini">
+                <div class="metric-val text-info">{{ goal.glasses_8oz }}</div>
+                <div class="metric-lbl">Glasses</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="metric-mini">
+                <div class="metric-val text-info">{{ goal.hourly_ml }}</div>
+                <div class="metric-lbl">ml/hour</div>
+              </div>
+            </div>
+            <div class="col-3">
+              <div class="metric-mini">
+                <div class="metric-val text-success">{{ ((water_today/goal.total_ml)*100)|int }}%</div>
+                <div class="metric-lbl">Done</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+const totalGoal = {{ goal.total_ml }};
+let currentWater = {{ water_today }};
+
+// Water chart
+new Chart(document.getElementById('waterChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [{
+      label: 'Water (ml)',
+      data: {{ chart_values|safe }},
+      backgroundColor: 'rgba(6,182,212,0.6)',
+      borderColor: 'rgba(6,182,212,1)',
+      borderRadius: 8, borderSkipped: false,
+    }, {
+      label: 'Goal',
+      data: {{ chart_labels|safe }}.map(() => totalGoal),
+      type: 'line', borderColor: 'rgba(34,197,94,0.7)',
+      borderDash: [6,3], pointRadius: 0, fill: false,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: true } },
+    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+  }
+});
+
+// Quick log buttons
+document.querySelectorAll('.water-log-btn').forEach(btn => {
+  btn.addEventListener('click', () => logWater(parseInt(btn.dataset.ml)));
+});
+
+function logCustomWater() {
+  const ml = parseInt(document.getElementById('customWater').value);
+  if (!ml || ml < 50) { showToast('Enter a valid amount (50-2000ml)', 'warning'); return; }
+  logWater(ml);
+}
+
+async function logWater(ml) {
+  const res  = await fetch('/api/water/log', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount_ml: ml })
+  });
+  const data = await res.json();
+  if (data.success) {
+    currentWater = data.total_ml;
+    const pct = Math.min(100, Math.round(currentWater / totalGoal * 100));
+    document.getElementById('waterAmount').textContent  = (currentWater / 1000).toFixed(2) + 'L';
+    document.getElementById('waterProgress').style.width = pct + '%';
+    document.getElementById('waterFill').style.height    = pct + '%';
+    document.getElementById('waterFeedback').textContent = `+${ml}ml logged! Total: ${currentWater}ml`;
+    showToast(data.message, 'success');
+  }
+}
+</script>
+{% endblock %}
+{% endblock %}

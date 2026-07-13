@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Meal Plans{% endblock %}
+{% block content %}
+<div class="container-fluid px-3 px-lg-4 py-4">
+  <div class="page-header mb-4 d-flex justify-content-between align-items-start flex-wrap gap-3">
+    <div>
+      <h2><i class="bi bi-calendar2-week-fill text-primary me-2"></i>Meal Plans</h2>
+      <p class="text-muted mb-0">AI-generated personalized Indian meal plans</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateModal">
+      <i class="bi bi-stars me-2"></i>Generate New Plan
+    </button>
+  </div>
+
+  <!-- Generate loading overlay -->
+  <div class="generate-overlay d-none" id="generateOverlay">
+    <div class="text-center">
+      <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem"></div>
+      <h5>NutriAgent is crafting your plan...</h5>
+      <p class="text-muted">Analyzing your profile and generating personalized recommendations</p>
+    </div>
+  </div>
+
+  <!-- Plans List -->
+  {% if plans %}
+  <div class="row g-4">
+    {% for plan in plans %}
+    <div class="col-12">
+      <div class="card card-modern {{ 'border-success-subtle' if plan.is_active }}">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <h6 class="mb-0 fw-bold">
+              {{ plan.plan_name }}
+              {% if plan.is_active %}<span class="badge bg-success ms-2">Active</span>{% endif %}
+            </h6>
+            <small class="text-muted">Generated {{ plan.created_at.strftime('%b %d, %Y') if plan.created_at else 'N/A' }}</small>
+          </div>
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('api.download_pdf_report') }}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-download me-1"></i>PDF
+            </a>
+            <button class="btn btn-sm btn-outline-danger" onclick="deletePlan({{ plan.id }}, this)">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="meal-plan-content">{{ plan.plan_data|replace('\n','<br>')|safe }}</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state text-center py-5">
+    <i class="bi bi-calendar2-x fs-1 text-muted mb-3 d-block"></i>
+    <h5>No meal plans yet</h5>
+    <p class="text-muted">Generate your first personalized AI meal plan!</p>
+    <button class="btn btn-primary btn-lg px-4" data-bs-toggle="modal" data-bs-target="#generateModal">
+      <i class="bi bi-stars me-2"></i>Generate Plan
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Generate Plan Modal -->
+<div class="modal fade" id="generateModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content modal-modern">
+      <div class="modal-header border-0">
+        <h5 class="modal-title"><i class="bi bi-stars text-warning me-2"></i>Generate AI Meal Plan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Plan Duration</label>
+          <select class="form-select" id="planDuration">
+            <option value="3 days">3 Days</option>
+            <option value="7 days" selected>7 Days (Recommended)</option>
+            <option value="14 days">14 Days</option>
+            <option value="30 days">30 Days</option>
+          </select>
+        </div>
+        {% if current_user.family_members %}
+        <div class="mb-3">
+          <label class="form-label">For</label>
+          <select class="form-select" id="planMember">
+            <option value="">Myself</option>
+            {% for m in current_user.family_members %}
+            <option value="{{ m.id }}">{{ m.name }} ({{ m.relation or 'Family' }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Additional Preferences (optional)</label>
+          <textarea class="form-control" id="planPreferences" rows="3"
+            placeholder="e.g. avoid onion-garlic, prefer South Indian style, include high-protein options, budget-friendly..."></textarea>
+        </div>
+        <div class="alert alert-info-soft small">
+          <i class="bi bi-info-circle-fill me-2"></i>
+          The plan will be personalized based on your profile: age, weight, fitness goal, dietary preferences, and medical conditions.
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary px-4" onclick="generatePlan()">
+          <i class="bi bi-stars me-2"></i>Generate Plan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block extra_js %}
+<script>
+async function generatePlan() {
+  const duration = document.getElementById('planDuration').value;
+  const prefs    = document.getElementById('planPreferences').value;
+  const memberId = document.getElementById('planMember')?.value || null;
+
+  document.querySelector('[data-bs-dismiss="modal"]').click();
+  document.getElementById('generateOverlay').classList.remove('d-none');
+
+  const res  = await fetch('/api/meal-plan/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ duration, preferences: prefs, member_id: memberId || undefined })
+  });
+  const data = await res.json();
+  document.getElementById('generateOverlay').classList.add('d-none');
+
+  if (data.success) {
+    showToast('Meal plan generated!', 'success');
+    setTimeout(() => location.reload(), 800);
+  } else {
+    showToast('Failed to generate plan: ' + (data.error || 'Unknown error'), 'danger');
+  }
+}
+
+async function deletePlan(planId, btn) {
+  if (!confirm('Delete this meal plan?')) return;
+  const res  = await fetch(`/api/meal-plan/${planId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.success) {
+    btn.closest('.col-12').remove();
+    showToast('Meal plan deleted', 'info');
+  }
+}
+</script>
+{% endblock %}
+{% endblock %}

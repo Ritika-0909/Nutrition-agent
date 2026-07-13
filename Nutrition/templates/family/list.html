@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Family Members{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="page-header mb-4 d-flex justify-content-between align-items-center">
+    <h2><i class="bi bi-people-fill text-purple me-2"></i>Family Profiles</h2>
+    <a href="{{ url_for('family.add_member') }}" class="btn btn-primary">
+      <i class="bi bi-person-plus-fill me-2"></i>Add Member
+    </a>
+  </div>
+  {% if members %}
+  <div class="row g-4">
+    {% for m in members %}
+    <div class="col-sm-6 col-lg-4">
+      <div class="card card-modern h-100">
+        <div class="card-body p-4">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="avatar-circle" style="background:{{ m.avatar_color }};width:48px;height:48px;font-size:20px">
+              {{ m.name[0].upper() }}
+            </div>
+            <div>
+              <h5 class="mb-0 fw-bold">{{ m.name }}</h5>
+              <small class="text-muted">{{ m.relation or 'Family Member' }} · {{ m.age or '?' }} yrs</small>
+            </div>
+          </div>
+          <div class="row g-1 small text-muted mb-3">
+            <div class="col-6"><i class="bi bi-person-fill me-1"></i>{{ m.gender or 'N/A' }}</div>
+            <div class="col-6"><i class="bi bi-speedometer2 me-1"></i>{{ m.dietary_preference or 'Omnivore' }}</div>
+            {% if m.weight_kg %}<div class="col-6"><i class="bi bi-body-text me-1"></i>{{ m.weight_kg }}kg</div>{% endif %}
+            {% if m.fitness_goal %}<div class="col-6"><i class="bi bi-trophy-fill me-1"></i>{{ m.fitness_goal|replace('_',' ')|title }}</div>{% endif %}
+            {% if m.allergies and m.allergies != 'none' %}
+            <div class="col-12 mt-1"><span class="badge bg-warning-soft text-warning">⚠ {{ m.allergies }}</span></div>
+            {% endif %}
+          </div>
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('nutrition.chat') }}?member={{ m.id }}" class="btn btn-sm btn-primary flex-1">
+              <i class="bi bi-chat-dots-fill"></i> Ask AI
+            </a>
+            <a href="{{ url_for('family.edit_member', member_id=m.id) }}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil-fill"></i>
+            </a>
+            <form method="POST" action="{{ url_for('family.delete_member', member_id=m.id) }}"
+                  onsubmit="return confirm('Remove {{ m.name }}?')" style="display:inline">
+              <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash3"></i></button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-people fs-1 mb-3 d-block"></i>
+    <h5>No family members added yet</h5>
+    <p>Add family members to get personalized nutrition plans for everyone</p>
+    <a href="{{ url_for('family.add_member') }}" class="btn btn-primary btn-lg px-4">
+      <i class="bi bi-person-plus-fill me-2"></i>Add First Member
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
